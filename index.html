@@ -1,137 +1,213 @@
-<?php
-require 'vendor/autoload.php';
-
-use PhpOffice\PhpSpreadsheet\IOFactory;
-
-// --- Fungsi Format Tanggal Indonesia ---
-function formatTanggalIndonesia($excelDate)
-{
-    // Jika bukan angka (misalnya sudah string), langsung kembalikan
-    if (!is_numeric($excelDate)) return $excelDate;
-
-    // Konversi serial number Excel ke timestamp
-    $unixTime = ((int)$excelDate - 25569) * 86400;
-    $date = new DateTime("@$unixTime");
-
-    // Sesuaikan zona waktu
-    $date->setTimezone(new DateTimeZone('Asia/Jakarta'));
-
-    // Nama bulan Indonesia
-    $bulanIndonesia = [
-        1 => 'Januari', 'Februari', 'Maret', 'April',
-        'Mei', 'Juni', 'Juli', 'Agustus',
-        'September', 'Oktober', 'November', 'Desember'
-    ];
-
-    $d = $date->format('j');
-    $m = $bulanIndonesia[(int)$date->format('n')];
-    $y = $date->format('Y');
-
-    return "$d $m $y";
-}
-
-// --- Load Excel ---
-$spreadsheet = IOFactory::load("data.xlsx");
-$sheet = $spreadsheet->getActiveSheet();
-
-// Ambil data ---
-$bulan = [];
-$penjualan = [];
-
-foreach ($sheet->getRowIterator(2) as $row) { // Mulai dari baris 2 (abaikan header)
-    $cellIterator = $row->getCellIterator();
-    $cellIterator->setIterateOnlyExistingCells(false);
-
-    $cells = [];
-    foreach ($cellIterator as $cell) {
-        $cells[] = $cell->getValue();
-    }
-
-    if ($cells[0] == null) continue;
-
-    // Format tanggal
-    $tanggalIndo = formatTanggalIndonesia($cells[0]);
-
-    $bulan[] = $tanggalIndo;
-    $penjualan[] = intval($cells[1]);
-}
-?>
-
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="id">
 <head>
-    <title>Grafik dari Excel</title>
-    <!-- BOOTSTRAP 5.3.3 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Demo Data Penjualan — GitHub Pages</title>
 
-    <!-- DataTables Bootstrap 5 CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- jQuery -->
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+  <!-- DataTables + Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- DataTables + Bootstrap 5 -->
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-    <!-- Buttons Export + Bootstrap -->
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
-
-    <!-- Excel export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
-    <!-- PDF export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-
-    <!-- Export buttons -->
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
-
-    <!-- CHARTJS -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+  <!-- Optional small custom CSS -->
+  <style>
+    body { padding-top: 1.5rem; padding-bottom: 2rem; background:#f8f9fa; }
+    .card { overflow: visible; }
+  </style>
 </head>
 <body>
+<div class="container">
 
-    <h2>Grafik Penjualan</h2>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4">Demo: Data Penjualan (GitHub Pages)</h1>
+    <small class="text-muted">Static JSON API → DataTable + Chart.js</small>
+  </div>
 
-    <section>
-        <div class="col-12 col-lg-4 mb-4">
-          <div class="card shadow-sm">
-            <div class="card">
-                <canvas id="chartExcel"></canvas>
-
-            </div>
-        </div>
+  <!-- Card: Table -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <strong>Data Penjualan</strong>
     </div>
-</section>
+    <div class="card-body">
+      <table id="tabelData" class="table table-striped table-sm" style="width:100%">
+        <thead>
+          <tr>
+            <th>Tanggal</th>
+            <th>Penjualan</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Card: Chart & Rekap -->
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card mb-4">
+        <div class="card-header">
+          <strong>Grafik Penjualan (Harian)</strong>
+        </div>
+        <div class="card-body">
+          <canvas id="chartExcel" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card mb-4">
+        <div class="card-header">
+          <strong>Rekap Per Bulan</strong>
+        </div>
+        <div class="card-body">
+          <ul id="rekapBulan" class="list-group list-group-flush"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- jQuery (DataTables membutuhkan) -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- DataTables core + Bootstrap integration -->
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<!-- Buttons extension + bootstrap integration -->
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+
+<!-- Export dependencies -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
+<!-- Buttons exporters -->
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-    const ctx = document.getElementById('chartExcel');
+// ---------- UTILS ----------
+const NAMA_BULAN_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
 
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($bulan) ?>,
-            datasets: [{
-                label: 'Penjualan',
-                data: <?= json_encode($penjualan) ?>,
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: { beginAtZero: true }
-            }
-        }
+// format ISO date to "12 Jan 2025"
+function formatTanggalIndoShort(isoDateStr) {
+  const d = new Date(isoDateStr);
+  if (isNaN(d)) return isoDateStr;
+  const day = d.getDate();
+  const month = NAMA_BULAN_SHORT[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+// group monthly totals from array of {date: 'YYYY-MM-DD', value: number}
+function rekapPerBulan(items) {
+  const totals = {};
+  items.forEach(it => {
+    const d = new Date(it.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; // e.g. 2025-01
+    totals[key] = (totals[key] || 0) + Number(it.value || 0);
+  });
+  // convert to array sorted by key
+  return Object.keys(totals).sort().map(k => ({month:k, total: totals[k]}));
+}
+
+// ---------- MAIN: fetch JSON API (static file data.json) ----------
+async function loadDataAndRender() {
+  try {
+    // fetch the static JSON file (acts as "API")
+    const res = await fetch('data.json', {cache: "no-store"});
+    if (!res.ok) throw new Error('Gagal memuat data.json: ' + res.status);
+    const items = await res.json(); // expecting array of {date: "YYYY-MM-DD", value: number}
+
+    // sanitize & sort by full date asc
+    const clean = items
+      .filter(it => it.date)
+      .map(it => ({ date: it.date, value: Number(it.value || 0) }))
+      .sort((a,b) => new Date(a.date) - new Date(b.date));
+
+    // Fill DataTable body
+    const tbody = $('#tabelData tbody');
+    tbody.empty();
+    clean.forEach(r => {
+      const tr = `<tr><td>${formatTanggalIndoShort(r.date)}</td><td>${r.value}</td></tr>`;
+      tbody.append(tr);
     });
-</script>
 
+    // Init DataTable (if not yet init) with Buttons
+    if (!$.fn.DataTable.isDataTable('#tabelData')) {
+      $('#tabelData').DataTable({
+        dom: 'Bfrtip',
+        buttons: [
+          { extend: 'excelHtml5', className: 'btn btn-success btn-sm', title: 'Data_Penjualan' },
+          { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', title: 'Data_Penjualan', orientation: 'landscape', pageSize: 'A4' },
+          'copy', 'csv', 'print'
+        ],
+        paging: true,
+        pageLength: 10,
+        order: [[0,'asc']],
+      });
+    }
+
+    // Chart: labels & data
+    const labels = clean.map(i => formatTanggalIndoShort(i.date));
+    const values = clean.map(i => i.value);
+
+    // destroy existing chart instance if present
+    if (window._myChart) { window._myChart.destroy(); window._myChart = null; }
+
+    const ctx = document.getElementById('chartExcel').getContext('2d');
+    window._myChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Penjualan',
+          data: values,
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    // Rekap per bulan
+    const rekap = rekapPerBulan(clean);
+    const ul = document.getElementById('rekapBulan');
+    ul.innerHTML = '';
+    rekap.forEach(item => {
+      const [year, mon] = item.month.split('-');
+      const label = `${NAMA_BULAN_SHORT[Number(mon)-1]} ${year}`;
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      li.innerHTML = `<span>${label}</span><strong>${item.total}</strong>`;
+      ul.appendChild(li);
+    });
+
+  } catch (err) {
+    console.error(err);
+    alert('Terjadi kesalahan saat memuat data. Cek console untuk detail.');
+  }
+}
+
+// run
+loadDataAndRender();
+</script>
 </body>
 </html>
